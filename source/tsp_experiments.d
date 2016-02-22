@@ -5,7 +5,7 @@ import ga_framework;
 import tsp;
 import generic_imp;
 
-Context!S runExperiment(S)(GAConfig!S ga_conf, ProblemConfig!S problem){
+Context!S runExperiment(S)(GAConfig!S ga_conf, ProblemConfig!S problem, Callback!(Context!S) callback=null){
     auto ga = new GA!S(ga_conf, problem);
     ga.run();
     return ga.ctx;
@@ -18,7 +18,8 @@ void main(string[] args){
         foreach (maxEvals; [100, 1000, 10_000, 20_000, 50_000, 100_000]) {
             config.popSize = popSize;
             config.maxEvals = maxEvals;
-            writeln(popSize, ";", maxEvals, ";", runExperiment!Path(config, problem).pop);
+            auto ctx = runExperiment!Path(config, problem, new UsefulCallback!(Context!Path));
+            writeln(popSize, ";", maxEvals, ";", ctx.duration, ";", ctx.pop);
 
         }
 }

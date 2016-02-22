@@ -98,7 +98,7 @@ class Path: Specimen {
     }
 
     override string toString(){
-        return "Path(" ~ to!string(repr) ~ "; eval = " ~ (isnan(eval) ? "NaN" : to!string(sqrt(eval))) ~ ")";
+        return "Path(" ~ to!string(repr) ~ "; eval = " ~ (isNaN(eval) ? "NaN" : to!string(sqrt(eval))) ~ ")";
     }
 }
 
