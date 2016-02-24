@@ -1,28 +1,82 @@
 module ga_framework;
 
-import std.math: isNaN;
+import std.math: isNaN, sqrt;
+import std.algorithm.comparison;
+import std.algorithm.iteration;
 import std.random;
 import std.stdio;
 import std.datetime;
+import std.format;
+import std.array;
 
-struct Stat {
-    double best;
-    double worst;
-    double avg;
-    double variance;
+import io;
+
+class Stat {
+    double best = double.max;
+    double worst = double.min_normal;
+    double avg = 0;
+    double variance = 0;
+
+    @property double stdDev(){
+        return sqrt(variance);
+    }
+
+    static string[] csvHeader = ["best", "worst", "avg", "stdDev", "variance"];
+
+    override string toString(){
+        return format("Stat(best = %f, worst = %f, avg = %f, variance = %f)", best, worst, avg, variance);
+    }
 }
 
 
 class Context(S){
     int genNo=0;
     int evals=0;
-    S[] pop;
-    Stat[] stats;
+    S[] pop = [];
+    Stat[] stats = [];
+    Stat[] properStats = [];
     TickDuration duration;
+
+    @property string metadata(){
+        with (std.conv.to!(Duration)(duration).split()) {
+            return format("Generations: %d\nEvaluations: %d\nTicks: %d\nDuration: %s\nGlobal best: %f\nProper eval of global best: %f\n",
+                            genNo, evals, duration.length,
+                            format("%02d:%02d:%02d.%3d", hours, minutes, seconds, msecs),
+                            globalBest, properGlobalBest
+            );
+        }
+    }
+
+    static double best(Stat[] theStats){
+        double result = double.max;
+        foreach (stat; theStats)
+            if (stat.best < result)
+                result = stat.best;
+        return result;
+    }
+
+    @property double globalBest(){
+        return best(stats);
+    }
+
+    @property double properGlobalBest(){
+        return best(properStats);
+    }
+
+    void saveStats(S)(CsvFormatter!S csv){
+        foreach (stat; stats)
+            with (stat) {
+                string formatDouble(double x){
+                    return format("%f", x);
+                }
+                csv.feed!string(array(map!formatDouble([best, worst, avg, stdDev, variance])));
+            }
+    }
 }
 
 class Specimen {
     double eval = double.nan;
+    double properEval = double.nan;
 }
 
 class Evaluator(S) {
@@ -37,6 +91,18 @@ class Evaluator(S) {
         return s.eval;
     }
     abstract double getEval(S s);
+
+    double evaluateProperly(S s){
+        if (isNaN(s.properEval)) {
+            auto e = getProperEval(s);
+            s.properEval=e;
+        }
+        return s.properEval;
+    }
+
+    double getProperEval(S s) {
+        return evaluate(s);
+    }
 }
 
 interface Generator(S){
@@ -50,20 +116,60 @@ interface Generator(S){
     }
 }
 
-class Callback(C){
-    void atStart(C ctx){}
-    void postSelect(C ctx){}
-    void atEnd(C ctx){}
+class Callback(S){
+    Evaluator!S evaluator = null;
+
+    void atStart(Context!S ctx){}
+    void postSelect(Context!S ctx){}
+    void atEnd(Context!S ctx){}
 }
 
-class UsefulCallback(C): Callback!C {
+class UsefulCallback(S): Callback!S {
     StopWatch stopWatch;
+    bool exact;
 
-    override void atStart(C ctx){
-        stopWatch.start();
+    this(bool exact){
+        this.exact = exact;
     }
 
-    override void atEnd(C ctx){
+    override void atStart(Context!S ctx){
+        stopWatch.start();
+        writeln("AT START");
+    }
+
+    Stat calculateStats(alias F)(S[] pop){
+        writeln("POP ", pop);
+        Stat stat = new Stat();
+        foreach (elem; pop) {
+            auto eval = F(elem);
+            if (eval > stat.worst)
+                stat.worst = eval;
+            if (eval < stat.best)
+                stat.best = eval;
+            stat.avg += eval;
+        }
+        stat.avg /= pop.length;
+        foreach (elem; pop)
+            stat.variance += (elem.eval-stat.avg)^^2;
+        stat.variance /= pop.length;
+        writeln("STAT ", stat);
+        return stat;
+    }
+
+    double justEval(S s){ return evaluator.evaluate(s); }
+    double properEval(S s){ return evaluator.evaluateProperly(s); }
+
+    override void postSelect(Context!S ctx){
+        writeln("justEval");
+        ctx.stats ~= calculateStats!justEval(ctx.pop);
+        if (exact) {
+            writeln("properEval");
+            ctx.properStats ~= calculateStats!properEval(ctx.pop);
+        }
+    }
+
+    override void atEnd(Context!S ctx){
+        writeln("AT END");
         stopWatch.stop();
         ctx.duration = stopWatch.peek();
         stopWatch.reset();
@@ -118,13 +224,13 @@ class GA(S) {
     Crossover!S cross;
     Selection!S select;
 
-    Callback!(Context!S) callback;
+    Callback!S callback;
 
-    this(GAConfig!S ga, ProblemConfig!S problem, Callback!(Context!S) callback=null){
+    this(GAConfig!S ga, ProblemConfig!S problem, Callback!S callback=null){
         this(ga.popSize, ga.cp, ga.mp, ga.maxEvals, problem.generator, problem.evaluator, problem.mut, problem.cross, ga.select, callback);
     }
 
-    this(int popSize, float cp, float mp, int maxEvals, Generator!S generator, Evaluator!S eval, Mutation!S mut, Crossover!S cross, Selection!S select, Callback!(Context!S) callback = null) {
+    this(int popSize, float cp, float mp, int maxEvals, Generator!S generator, Evaluator!S eval, Mutation!S mut, Crossover!S cross, Selection!S select, Callback!S callback = null) {
         this.ctx = new Context!S;
     	this.popSize = popSize;
         this.cp = cp;
@@ -140,6 +246,8 @@ class GA(S) {
         this.select = select;
 
         this.callback = callback;
+        if (this.callback)
+            this.callback.evaluator = eval;
     }
 
     S[] generateInitialPop(Generator!S generator){

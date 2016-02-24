@@ -55,7 +55,7 @@ class CsvFormatter(S = string) {
         return this;
     }
 
-    CsvFormatter!S and(){
+    CsvFormatter!S nl(){
         _result ~= "\n";
         firstInRow = true;
         return this;
@@ -65,7 +65,7 @@ class CsvFormatter(S = string) {
     CsvFormatter!S feed(T)(T[] data...){
         foreach (d; data)
             _(d);
-        and();
+        nl();
         return this;
     }
 
@@ -95,7 +95,7 @@ unittest {
     assert(x.feed("1", "foo", "3.5").feed("2", "bar", "8.5").result == "1;foo;3.5\n2;bar;8.5\n");
     x.reset();
     assert(x.result == "");
-    assert(x._(1)._("foo")._(3.5).and()._(2)._("bar")._(8.5).and().result == "1;foo;3.5\n2;bar;8.5\n");
+    assert(x._(1)._("foo")._(3.5).nl()._(2)._("bar")._(8.5).nl().result == "1;foo;3.5\n2;bar;8.5\n");
 }
 
 class CsvFile(S = string): CsvFormatter!S {

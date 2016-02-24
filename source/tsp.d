@@ -98,7 +98,7 @@ class Path: Specimen {
     }
 
     override string toString(){
-        return "Path(" ~ to!string(repr) ~ "; eval = " ~ (isNaN(eval) ? "NaN" : to!string(sqrt(eval))) ~ ")";
+        return "Path(" ~ to!string(repr) ~ "; eval = " ~ (isNaN(eval) ? "NaN" : to!string(eval)) ~ "; properEval = " ~ (isNaN(properEval) ? "NaN" : to!string(properEval)) ~ ")";
     }
 }
 
@@ -114,6 +114,14 @@ class TspEval: Evaluator!Path {
         foreach (i; 0..s.repr.length-2)
             result += distances[s.repr[i]][s.repr[i+1]];
         result += distances[s.repr[s.repr.length-2]][s.repr[s.repr.length-1]];
+        return result;
+    }
+
+    override double getProperEval(Path s) {
+        double result = 0;
+        foreach (i; 0..s.repr.length-2)
+            result += sqrt(distances[s.repr[i]][s.repr[i+1]]);
+        result += sqrt(distances[s.repr[s.repr.length-2]][s.repr[s.repr.length-1]]);
         return result;
     }
 }
